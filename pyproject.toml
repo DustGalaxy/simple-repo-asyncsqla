@@ -11,11 +11,20 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.41",
 ]
 
-[project.urls]
-"Homepage" = "https://github.com/DustGalaxy/simple-repo-asyncsqla"
+classifiers = [
+  "Development Status :: 4 - Beta",
 
-[project.scripts]
-simple-repo-asyncsqla = "simple_repo_asyncsqla:main"
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+
+]
+
+[project.urls]
+Homepage = "https://github.com/DustGalaxy/simple-repo-asyncsqla"
+Repository = "https://github.com/DustGalaxy/simple-repo-asyncsqla"
+Issues = "https://github.com/DustGalaxy/simple-repo-asyncsqla/issues"
 
 [build-system]
 requires = ["hatchling"]
