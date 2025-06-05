@@ -1,6 +1,6 @@
 [project]
 name = "simple-repo-asyncsqla"
-version = "0.1.0"
+version = "0.1.1"
 description = "simple package for fast and flex crud usage with repository pattern"
 readme = "README.md"
 authors = [
