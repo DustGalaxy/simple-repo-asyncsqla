@@ -5,9 +5,9 @@ import asyncio
 
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.repo.repository import crud_factory
-from src.repo.protocols import SqlaModel
-from src.repo.exceptions import DiffAtrrsOnCreateCrud
+from src.simple_repository.repository import crud_factory
+from src.simple_repository.protocols import SqlaModel
+from src.simple_repository.exceptions import DiffAtrrsOnCreateCrud
 from pydantic import BaseModel, ConfigDict, Field
 
 from tests.database import Base, async_session_maker, create_db, drop_db
