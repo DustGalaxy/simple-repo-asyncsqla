@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "DustGalaxy", email = "103292379+DustGalaxy@users.noreply.github.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "sqlalchemy[asyncio]>=2.0.41",
 ]
