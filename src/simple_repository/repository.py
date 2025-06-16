@@ -1,28 +1,13 @@
-from uuid import UUID
-from typing import Generic, Sequence, Optional, Type, cast, TYPE_CHECKING
+from typing import Generic, Sequence, Optional, Type
 from contextlib import asynccontextmanager
 
 from sqlalchemy import delete, select, update, func
 
-if TYPE_CHECKING:
-    from .repository import AsyncCrud
-
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .exceptions import IntegrityConflictException, NotFoundException, RepositoryException, DiffAtrrsOnCreateCrud
-from .utils import same_attrs
-from .types import SA, DM, PrimitiveValue, FilterValue, IdValue, Filters
-
-# PrimitiveValue = Union[str, UUID, int, float, bool]
-
-# # Type variables with more descriptive names
-# SA = TypeVar("SA", bound=SqlaModel)
-# DM = TypeVar("DM", bound=DomainModel)
-
-
-class CrudMeta(type):
-    pass
+from .exceptions import IntegrityConflictException, NotFoundException, RepositoryException
+from .types import SA, DM, CrudMeta, PrimitiveValue, FilterValue, IdValue, Filters
 
 
 class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
@@ -298,25 +283,3 @@ class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
 
         result = await session.execute(q)
         return result.scalar_one()
-
-
-# Type alias for better readability
-CRUDRepository = Type[AsyncCrud[SA, DM]]
-
-
-def crud_factory(sqla_model: Type[SA], domain_model: Type[DM]) -> CRUDRepository:
-    """Creates a type-safe CRUD repository for the given models."""
-    if not same_attrs(sqla_model, domain_model):
-        raise DiffAtrrsOnCreateCrud()
-
-    new_class_name = f"{sqla_model.__name__}Crud"
-
-    new_cls = CrudMeta(
-        new_class_name,
-        (AsyncCrud,),
-        {
-            "sqla_model": sqla_model,
-            "domain_model": domain_model,
-        },
-    )
-    return cast(CRUDRepository, new_cls)

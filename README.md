@@ -24,8 +24,11 @@ pip install simple-repo-asyncsqla
 ```python
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
 from pydantic import BaseModel, ConfigDict
+
 from simple_repository import crud_factory
+from simple_repository.exceptions import NotFoundException
 
 # Define your models
 class Base(DeclarativeBase):
@@ -93,8 +96,10 @@ Extend the base repository with advanced query methods:
 
 ```python
 from sqlalchemy import select, case, func, text
+
 from simple_repository import crud_factory
-from .models import User
+
+from .models.user import User
 from .domains.user import UserDTO
 
 class UserRepository(crud_factory(User, UserDTO)):
@@ -168,7 +173,9 @@ async def analyze_user_activity(session):
 ### Error Handling
 
 ```python
-from simple_repository.exceptions import NotFoundException, IntegrityConflictException
+from simple_repository.exceptions import NotFoundException
+
+from .my_repository import user_crud
 
 async def get_user(session, user_id: int) -> UserDTO:
     try:

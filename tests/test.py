@@ -5,7 +5,8 @@ from typing import Self, Any, AsyncGenerator, Type
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.simple_repository.repository import crud_factory, AsyncCrud
+from src.simple_repository.repository import AsyncCrud
+from src.simple_repository.factory import crud_factory
 from src.simple_repository.protocols import SqlaModel
 from src.simple_repository.exceptions import DiffAtrrsOnCreateCrud, NotFoundException
 from pydantic import BaseModel, ConfigDict, Field
@@ -45,7 +46,6 @@ def sqla_model() -> Type[SqlaTestModel]:
     return SqlaTestModel
 
 
-# Define test models
 class DomainTestModel(BaseModel):
     """Pydantic model for testing."""
 
@@ -97,8 +97,32 @@ def test_crud_factory_with_dataclass():
             return {"field": self.field}
 
         @classmethod
-        def model_validate(cls, obj: SqlaModel) -> Self:
-            return cls(field=obj.field)  # type: ignore
+        def model_validate(cls, obj: SimpleSqlaModel) -> Self:
+            return cls(field=obj.field)
+
+    crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
+    assert crud is not None
+
+
+def test_crud_factory_with_class():
+    """Test crud_factory with class model."""
+
+    class SimpleSqlaModel:
+        __tablename__ = "simple"
+        field: Mapped[str]
+
+    class SimpleDomainModel:
+        field: str
+
+        def __init__(self, field: str) -> None:
+            self.field = field
+
+        def model_dump(self) -> dict[str, Any]:
+            return {"field": self.field}
+
+        @classmethod
+        def model_validate(cls, obj: SimpleSqlaModel) -> Self:
+            return cls(field=obj.field)
 
     crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
     assert crud is not None
@@ -152,7 +176,6 @@ async def test_crud_operations(
 
     # Delete
     await crud.remove(session, created.id)
-    try:
+
+    with pytest.raises(NotFoundException):
         await crud.get_one(session, created.id)
-    except NotFoundException:
-        pass
