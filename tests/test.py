@@ -48,6 +48,7 @@ def sqla_model() -> Type[SqlaTestModel]:
 # Define test models
 class DomainTestModel(BaseModel):
     """Pydantic model for testing."""
+
     id: int = Field(default=0)
     name: str
     description: str | None = None
@@ -144,6 +145,10 @@ async def test_crud_operations(
     assert len(models) == 1
     assert count == 1
     assert models[0].name == "Updated"
+
+    # Filter
+    filtred = await crud.get_many(session, filter="Description", column="description")
+    assert len(filtred) == 1
 
     # Delete
     await crud.remove(session, created.id)

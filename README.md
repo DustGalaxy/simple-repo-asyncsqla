@@ -9,6 +9,7 @@ A lightweight and type-safe repository pattern implementation for SQLAlchemy asy
 - 🎯 Easy integration with SQLAlchemy models
 - 📦 Pydantic support out of the box
 - 🛠 Generic repository pattern implementation
+- 📝 Full type hints support
 
 ## Installation
 
@@ -18,97 +19,163 @@ pip install simple-repo-asyncsqla
 
 ## Quick Start
 
+### Common example
+
 ```python
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from pydantic import BaseModel, ConfigDict
 from simple_repository import crud_factory
 
-# Define your SQLAlchemy model
-class UserModel(DeclarativeMeta):
+# Define your models
+class Base(DeclarativeBase):
+    pass
+
+class User(Base):
     __tablename__ = "users"
     
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]
     email: Mapped[str]
+    is_active: Mapped[bool] = mapped_column(default=True)
 
-# Define your Pydantic model
+# you can use dataclass or normal class but see protocol - DomainModel
 class UserDTO(BaseModel):
     id: int = 0
     name: str
     email: str
+    is_active: bool = True
     
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
-# Create CRUD repository
-user_crud = crud_factory(UserModel, UserDTO)
+engine = create_async_engine("sqlite+aiosqlite:///./db.sqlite3")
+async_session = async_sessionmaker(engine, expire_on_commit=False)
 
-# Use in your async code
-async def example_usage():
+user_crud = crud_factory(User, UserDTO)
+
+async def example():
     async with async_session() as session:
         # Create
         new_user = await user_crud.create(
             session, 
-            UserDTO(name="John", email="john@example.com")
+            UserDTO(name="John Doe", email="john@example.com")
         )
         
         # Read
         user = await user_crud.get_one(session, new_user.id)
-        
+
         # Update
-        updated = await user_crud.update(
-            session, 
-            UserDTO(id=user.id, name="John Doe", email=user.email)
+        user.name = "John Smith"
+        updated = await user_crud.update(session, user, user.id)
+        
+        # List with pagination
+        users, total = await user_crud.get_all(
+            session,
+            offset=0,
+            limit=10,
+            order_by="name",
+            desc=True
         )
         
         # Delete
         await user_crud.remove(session, user.id)
         
-        # Get all with pagination
-        users, count = await user_crud.get_all(
-            session,
-            skip=0,
-            limit=10,
-            order_by="id"
-        )
+        # Get exception
+        try:
+            user = await user_crud.get_one(session, new_user.name, column="name")
+        except NotFoundException: 
+            ...
 ```
 
-## Features in Detail
+### Custom Repository
 
-### Type Safety
-
-The repository ensures type safety between your SQLAlchemy models and Pydantic DTOs:
+Extend the base repository with advanced query methods:
 
 ```python
-def crud_factory(sqla_model: Type[SqlaModel], domain_model: Type[DomainModel]) -> CRUDRepository:
-    """
-    Creates a type-safe CRUD repository for your models.
-    Validates that SQLAlchemy and Domain models have matching attributes.
-    """
+from sqlalchemy import select, case, func, text
+from simple_repository import crud_factory
+from .models import User
+from .domains.user import UserDTO
+
+class UserRepository(crud_factory(User, UserDTO)):
+    """Custom repository with advanced analytics capabilities."""
+    
+    @classmethod
+    async def get_user_activity_stats(
+        cls,
+        session,
+        min_orders: int = 5,
+        days_window: int = 30
+    ) -> list[dict]:
+        current_date = func.current_timestamp()
+        window_date = current_date - text(f"interval '{days_window} days'")
+        
+        orders_stats = (
+            select(
+                Order.user_id,
+                func.count().label('order_count'),
+                func.sum(Order.total_amount).label('total_spent'),
+                func.avg(Order.total_amount).label('avg_order_value'),
+                func.count(case(
+                    (Order.created_at > window_date, 1)
+                )).label('recent_orders'),
+                (func.max(Order.created_at) - func.min(Order.created_at)) /
+                    func.nullif(func.count() - 1, 0)
+                    .label('avg_order_interval')
+            )
+            .group_by(Order.user_id)
+            .having(func.count() >= min_orders)
+            .alias('orders_stats')
+        )
+        
+        query = (
+            select(
+                cls.sqla_model.id,
+                cls.sqla_model.name,
+                cls.sqla_model.email,
+                orders_stats.c.order_count,
+                orders_stats.c.total_spent,
+                orders_stats.c.avg_order_value,
+                orders_stats.c.recent_orders,
+                orders_stats.c.avg_order_interval,
+                (
+                    orders_stats.c.recent_orders * 0.4 +
+                    func.least(orders_stats.c.total_spent / 1000, 10) * 0.3 +
+                    (orders_stats.c.order_count * 0.3)
+                ).label('engagement_score'),
+                func.percent_rank().over(
+                    order_by=orders_stats.c.total_spent
+                ).label('spending_percentile')
+            )
+            .join(orders_stats, cls.sqla_model.id == orders_stats.c.user_id)
+            .where(cls.sqla_model.is_active == True)
+            .order_by(text('engagement_score DESC'))
+        )
+        
+        result = await session.execute(query)
+        return list(result.mappings().all())
+
+# Usage example
+async def analyze_user_activity(session):
+    stats = await UserRepository.get_user_activity_stats(
+        session,
+        min_orders=5,   
+        days_window=30   
+    )
+    
 ```
-
-### Async Support
-
-All operations are async by default and work with SQLAlchemy's async session:
-
-- `create(session, DomainModel)`
-- `create_many(session, list[DomainModel])`
-- `get_one(session, id)`
-- `get_many(session, filter, column, order_by, desc)`
-- `get_all(session, offset, limit, order_by, desc)`
-- `update(session, DomainModel, id, column)`
-- `remove(session, id, column, raise_not_found)`
-- `remove_many(session, ids, column)`
-- `count(session, filters)`
 
 ### Error Handling
 
-Built-in exceptions for common cases:
+```python
+from simple_repository.exceptions import NotFoundException, IntegrityConflictException
 
-- `NotFoundException`: When entity is not found
-- `IntegrityConflictException`: For database integrity violations
-- `DiffAtrrsOnCreateCrud`: When model attributes don't match
-- `RepositoryException`: Base exception class
+async def get_user(session, user_id: int) -> UserDTO:
+    try:
+        return await user_crud.get_one(session, user_id)
+    except NotFoundException:
+        raise HTTPException(status_code=404, detail="User not found")
+```
 
 ## Contributing
 
@@ -116,4 +183,4 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

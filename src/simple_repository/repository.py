@@ -40,12 +40,10 @@ class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
         try:
             yield session
             await session.commit()
-        except Exception as e:
+        except IntegrityError as e:
             await session.rollback()
-            if isinstance(e, IntegrityError):
-                raise IntegrityConflictException(
-                    f"{cls.sqla_model.__tablename__} conflicts with existing data: {e}"
-                ) from e
+            raise IntegrityConflictException(f"{cls.sqla_model.__tablename__} conflicts with existing data: {e}") from e
+        except Exception as e:
             raise RepositoryException(f"Transaction failed: {e}") from e
 
     @classmethod
@@ -103,7 +101,7 @@ class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
         id_: IdValue,
         column: str = "id",
     ) -> DM:
-        """Get single entity by id or other column"""
+        """Get single entity (or raise NotFoundException) by id or other column"""
         try:
             q = select(cls.sqla_model).where(getattr(cls.sqla_model, column) == id_)
         except AttributeError as e:
@@ -136,7 +134,7 @@ class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
                 q = q.where(getattr(cls.sqla_model, column).in_(filter))
             elif isinstance(
                 filter,
-                (str, UUID, int, float, bool),
+                PrimitiveValue,
             ):
                 q = q.where(getattr(cls.sqla_model, column) == filter)
         except AttributeError as e:
