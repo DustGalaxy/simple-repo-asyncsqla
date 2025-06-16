@@ -15,7 +15,7 @@ def crud_factory(sqla_model: Type[SA], domain_model: Type[DM]) -> CRUDRepository
     if not same_attrs(sqla_model, domain_model):
         raise DiffAtrrsOnCreateCrud()
 
-    new_class_name = f"{sqla_model.__name__}Crud"
+    new_class_name = f"{sqla_model.__name__}Repository"
 
     new_cls = CrudMeta(
         new_class_name,

@@ -143,6 +143,19 @@ def test_crud_factory_different_attributes():
         crud_factory(SimpleSqlaModel, SimpleDomainModel)
 
 
+def test_crud_class_name():
+    class SimpleSqlaModel:
+        __tablename__ = "simple"
+        field: Mapped[str]
+
+    class SimpleDomainModel(BaseModel):
+        field: str
+
+    crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
+    print(crud.__name__)
+    assert crud.__name__ == "SimpleSqlaModelRepository"
+
+
 @pytest.mark.asyncio
 async def test_crud_operations(
     session: AsyncSession, crud: Type[AsyncCrud[SqlaTestModel, DomainTestModel]], domain_model: Type[DomainTestModel]
