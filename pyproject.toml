@@ -1,24 +1,32 @@
 [project]
 name = "simple-repo-asyncsqla"
-version = "0.1.2"
-description = "simple package for fast and flex crud usage with repository pattern"
+version = "0.1.3"
+description = "A lightweight and type-safe repository pattern implementation for SQLAlchemy async with Pydantic integration"
 readme = "README.md"
+license = "MIT"
 authors = [
     { name = "DustGalaxy", email = "103292379+DustGalaxy@users.noreply.github.com" }
 ]
+keywords = ["sqlalchemy", "repository-pattern", "async", "pydantic", "crud", "database"]
 requires-python = ">=3.10"
 dependencies = [
     "sqlalchemy[asyncio]>=2.0.41",
 ]
 
 classifiers = [
-  "Development Status :: 4 - Beta",
-
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
-
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: AsyncIO",
+    "Typing :: Typed"
 ]
 
 [project.urls]
@@ -33,9 +41,15 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/simple_repository"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py", "test.py"]
+asyncio_mode = "auto"
+
 [dependency-groups]
 dev = [
     "aiosqlite>=0.21.0",
     "pydantic>=2.11.5",
     "pytest>=8.4.0",
+    "pytest-asyncio>=1.0.0",
 ]

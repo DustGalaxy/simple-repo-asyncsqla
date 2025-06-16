@@ -1,9 +1,10 @@
 def get_attrs(model):
-    if hasattr(model, "__fields__"):
-        return set(getattr(model, "__fields__", {}).keys())
-    elif hasattr(model, "__tablename__"):
+    """Get model fields for any model type."""
+    if hasattr(model, "model_fields"):  # Pydantic v2
+        return set(model.model_fields.keys())
+    elif hasattr(model, "__tablename__"):  # SQLAlchemy models
         return set(getattr(model, "__annotations__", {}).keys())
-    else:
+    else:  # Other models (dataclasses, etc)
         return set(getattr(model, "__annotations__", {}).keys())
 
 

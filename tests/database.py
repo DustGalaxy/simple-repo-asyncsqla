@@ -1,6 +1,12 @@
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase
+
+
+class Base(DeclarativeBase):
+    """Base class for all database models."""
+
+    pass
 
 
 engine: AsyncEngine = create_async_engine("sqlite+aiosqlite:///./test.db")
@@ -14,9 +20,6 @@ async_session_maker = async_sessionmaker(
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         yield session
-
-
-Base = declarative_base()
 
 
 async def create_db() -> None:

@@ -1,32 +1,35 @@
 from uuid import UUID
-from typing import Generic, Sequence, Optional, Type, TypeVar, Union, cast
+from typing import Generic, Sequence, Optional, Type, cast, TYPE_CHECKING
 from contextlib import asynccontextmanager
 
 from sqlalchemy import delete, select, update, func
 
+if TYPE_CHECKING:
+    from .repository import AsyncCrud
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .protocols import SqlaModel, DomainModel
 from .exceptions import IntegrityConflictException, NotFoundException, RepositoryException, DiffAtrrsOnCreateCrud
 from .utils import same_attrs
+from .types import SA, DM, PrimitiveValue, FilterValue, IdValue, Filters
 
+# PrimitiveValue = Union[str, UUID, int, float, bool]
 
-PrimitiveValue = Union[str, UUID, int, float, bool]
-
-SQLAlchemyModel = TypeVar("SQLAlchemyModel", bound=SqlaModel)
-PydanticLike = TypeVar("PydanticLike", bound=DomainModel)
+# # Type variables with more descriptive names
+# SA = TypeVar("SA", bound=SqlaModel)
+# DM = TypeVar("DM", bound=DomainModel)
 
 
 class CrudMeta(type):
     pass
 
 
-class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
-    sqla_model: Type[SQLAlchemyModel]
-    domain_model: Type[PydanticLike]
+class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
+    sqla_model: Type[SA]
+    domain_model: Type[DM]
 
-    def __init__(self, sqla_model: Type[SQLAlchemyModel], domain_model: Type[PydanticLike]):
+    def __init__(self, sqla_model: Type[SA], domain_model: Type[DM]):
         self.sqla_model = sqla_model
         self.domain_model = domain_model
 
@@ -49,8 +52,8 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
     async def create(
         cls,
         session: AsyncSession,
-        data: PydanticLike,
-    ) -> PydanticLike:
+        data: DM,
+    ) -> DM:
         """Create a single entity"""
         try:
             db_model = cls.sqla_model(**data.model_dump(exclude_unset=True))
@@ -71,9 +74,9 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
     async def create_many(
         cls,
         session: AsyncSession,
-        data: list[PydanticLike],
+        data: list[DM],
         return_models: bool = False,
-    ) -> list[PydanticLike] | bool:
+    ) -> list[DM] | bool:
         """Create multiple entities at once"""
         db_models = [cls.sqla_model(**d.model_dump(exclude_unset=True)) for d in data]
 
@@ -97,9 +100,9 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
     async def get_one(
         cls,
         session: AsyncSession,
-        id_: str | UUID | int,
+        id_: IdValue,
         column: str = "id",
-    ) -> PydanticLike:
+    ) -> DM:
         """Get single entity by id or other column"""
         try:
             q = select(cls.sqla_model).where(getattr(cls.sqla_model, column) == id_)
@@ -120,11 +123,11 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
     async def get_many(
         cls,
         session: AsyncSession,
-        filter: PrimitiveValue | list[PrimitiveValue],
+        filter: FilterValue,
         column: str = "id",
         order_by: Optional[str] = None,
         desc: bool = False,
-    ) -> list[PydanticLike]:
+    ) -> list[DM]:
         """Get multiple entities by list of ids"""
         q = select(cls.sqla_model)
 
@@ -161,7 +164,7 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
         limit: Optional[int] = 100,
         order_by: Optional[str] = None,
         desc: bool = False,
-    ) -> tuple[Sequence[SQLAlchemyModel], int]:
+    ) -> tuple[Sequence[SA], int]:
         """Get all entities with pagination support and total count"""
         q = select(cls.sqla_model)
 
@@ -189,10 +192,10 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
     async def update(
         cls,
         session: AsyncSession,
-        data: PydanticLike,
-        id_: str | UUID | int,
+        data: DM,
+        id_: IdValue,
         column: str = "id",
-    ) -> PydanticLike:
+    ) -> DM:
         """Update entity by id and return the updated model"""
         try:
             # First check if entity exists
@@ -228,7 +231,7 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
     async def remove(
         cls,
         session: AsyncSession,
-        id_: str | UUID,
+        id_: IdValue,
         column: str = "id",
         raise_not_found: bool = False,
     ) -> int:
@@ -258,7 +261,7 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
     async def remove_many(
         cls,
         session: AsyncSession,
-        ids: list[str | UUID],
+        ids: list[IdValue],
         column: str = "id",
     ) -> int:
         """Remove multiple entities by ids"""
@@ -281,7 +284,7 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
     async def count(
         cls,
         session: AsyncSession,
-        filters: dict[str, str] | None = None,
+        filters: Optional[Filters] = None,
     ) -> int:
         """Count entities with optional filtering"""
         q = select(func.count()).select_from(cls.sqla_model)
@@ -299,10 +302,12 @@ class AsyncCrud(Generic[SQLAlchemyModel, PydanticLike], metaclass=CrudMeta):
         return result.scalar_one()
 
 
-def crud_factory(
-    sqla_model: Type[SQLAlchemyModel], domain_model: Type[PydanticLike]
-) -> Type[AsyncCrud[SQLAlchemyModel, PydanticLike]]:
-    "Function for producing flex crud`s"
+# Type alias for better readability
+CRUDRepository = Type[AsyncCrud[SA, DM]]
+
+
+def crud_factory(sqla_model: Type[SA], domain_model: Type[DM]) -> CRUDRepository:
+    """Creates a type-safe CRUD repository for the given models."""
     if not same_attrs(sqla_model, domain_model):
         raise DiffAtrrsOnCreateCrud()
 
@@ -316,4 +321,4 @@ def crud_factory(
             "domain_model": domain_model,
         },
     )
-    return cast(Type[AsyncCrud[SQLAlchemyModel, PydanticLike]], new_cls)
+    return cast(CRUDRepository, new_cls)

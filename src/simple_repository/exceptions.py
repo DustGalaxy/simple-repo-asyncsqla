@@ -21,7 +21,7 @@ class DiffAtrrsOnCreateCrud(RepositoryException):
         return """'sqla_model' and 'domain_model' must have same attrs
                                   
 Example, same attrs names:
-class MyBelovedSqlaModel:
+class MyBelovedSqlaModel(Base):
     __tablename__ = "tablename"
 
     meme: Mapped[str] # attr 1
