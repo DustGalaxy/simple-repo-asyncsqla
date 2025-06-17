@@ -51,6 +51,12 @@ class UserDTO(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
+# you can use dataclass or normal class but see protocol - Schema
+class UserPatch(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    is_active: bool | None = None
+
 engine = create_async_engine("sqlite+aiosqlite:///./db.sqlite3")
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -69,8 +75,12 @@ async def example():
 
         # Update
         user.name = "John Smith"
-        updated = await user_crud.update(session, user, user.id)
-        
+        updated = await user_crud.update(session, user)
+
+        # Patch
+        data = UserPatch(name="Fredy Smith", email="fredy@example.com")
+        patched = await user_crud.patch(session, data, updated.id)
+
         # List with pagination
         users, total = await user_crud.get_all(
             session,
@@ -183,6 +193,20 @@ async def get_user(session, user_id: int) -> UserDTO:
     except NotFoundException:
         raise HTTPException(status_code=404, detail="User not found")
 ```
+
+### Support operations out the box
+
+ - create
+ - create_many
+ - get_one
+ - get_many
+ - get_all
+ - patch
+ - update
+ - remove
+ - remove_many
+ - count
+
 
 ## Contributing
 

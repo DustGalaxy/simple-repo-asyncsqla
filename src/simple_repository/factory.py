@@ -1,4 +1,3 @@
-# Type alias for better readability
 from typing import Type, cast
 
 from .exceptions import DiffAtrrsOnCreateCrud

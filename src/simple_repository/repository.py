@@ -1,4 +1,4 @@
-from typing import Generic, Sequence, Optional, Type
+from typing import Generic, Optional, Type
 from contextlib import asynccontextmanager
 
 from sqlalchemy import delete, select, update, func
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .exceptions import IntegrityConflictException, NotFoundException, RepositoryException
 from .types import SA, DM, CrudMeta, PrimitiveValue, FilterValue, IdValue, Filters
+from .protocols import Schema
 
 
 class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
@@ -147,7 +148,7 @@ class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
         limit: Optional[int] = 100,
         order_by: Optional[str] = None,
         desc: bool = False,
-    ) -> tuple[Sequence[SA], int]:
+    ) -> tuple[list[DM], int]:
         """Get all entities with pagination support and total count"""
         q = select(cls.sqla_model)
 
@@ -169,22 +170,20 @@ class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
         count_result = await session.execute(count_q)
         total = count_result.scalar_one()
 
-        return [cls.domain_model.model_validate(entity) for entity in rows.unique().scalars().all()], total  # type: ignore
+        return [cls.domain_model.model_validate(entity) for entity in rows.unique().scalars().all()], total
 
     @classmethod
-    async def update(
+    async def patch(
         cls,
         session: AsyncSession,
-        data: DM,
+        data: Schema,
         id_: IdValue,
         column: str = "id",
     ) -> DM:
-        """Update entity by id and return the updated model"""
+        """Patch entity by id and return the updated model"""
         try:
-            # First check if entity exists
             await cls.get_one(session, id_, column)
 
-            # Update values using update statement
             q = (
                 update(cls.sqla_model)
                 .where(getattr(cls.sqla_model, column) == id_)
@@ -195,14 +194,47 @@ class AsyncCrud(Generic[SA, DM], metaclass=CrudMeta):
             result = await session.execute(q)
             await session.commit()
 
-            # Get the updated entity
             updated_entity = result.scalar_one()
-            return cls.domain_model.model_validate(updated_entity)  # type: ignore
+            return cls.domain_model.model_validate(updated_entity)
 
         except IntegrityError as e:
             await session.rollback()
             raise IntegrityConflictException(
                 f"{cls.sqla_model.__tablename__} {column}={id_} conflict with existing data: {e}",
+            ) from e
+        except Exception as e:
+            await session.rollback()
+            if not isinstance(e, RepositoryException):
+                raise RepositoryException(f"Failed to update {cls.sqla_model.__tablename__}: {e}") from e
+            raise
+
+    @classmethod
+    async def update(
+        cls,
+        session: AsyncSession,
+        data: DM,
+    ) -> DM:
+        """Update entity and return the updated model"""
+        try:
+            await cls.get_one(session, data.id)
+
+            q = (
+                update(cls.sqla_model)
+                .where(getattr(cls.sqla_model, "id") == data.id)
+                .values(**data.model_dump(exclude_unset=True))
+                .returning(cls.sqla_model)
+            )
+
+            result = await session.execute(q)
+            await session.commit()
+
+            updated_entity = result.scalar_one()
+            return cls.domain_model.model_validate(updated_entity)
+
+        except IntegrityError as e:
+            await session.rollback()
+            raise IntegrityConflictException(
+                f"{cls.sqla_model.__tablename__} id={data.id} conflict with existing data: {e}",
             ) from e
         except Exception as e:
             await session.rollback()

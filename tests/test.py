@@ -1,5 +1,5 @@
 import pytest
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, MISSING
 from typing import Self, Any, AsyncGenerator, Type
 
 from sqlalchemy.orm import Mapped, mapped_column
@@ -73,9 +73,11 @@ def test_crud_factory_with_pydantic():
 
     class SimpleSqlaModel:
         __tablename__ = "simple"
+        id: Mapped[int]
         field: Mapped[str]
 
     class SimpleDomainModel(BaseModel):
+        id: int
         field: str
 
     crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
@@ -87,18 +89,20 @@ def test_crud_factory_with_dataclass():
 
     class SimpleSqlaModel:
         __tablename__ = "simple"
+        id: Mapped[int]
         field: Mapped[str]
 
     @dataclass
     class SimpleDomainModel:
+        id: int
         field: str
 
-        def model_dump(self) -> dict[str, Any]:
+        def model_dump(self, *args, **kwargs) -> dict[str, Any]:
             return {"field": self.field}
 
         @classmethod
         def model_validate(cls, obj: SimpleSqlaModel) -> Self:
-            return cls(field=obj.field)
+            return cls(id=obj.id, field=obj.field)
 
     crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
     assert crud is not None
@@ -109,20 +113,23 @@ def test_crud_factory_with_class():
 
     class SimpleSqlaModel:
         __tablename__ = "simple"
+        id: Mapped[int]
         field: Mapped[str]
 
     class SimpleDomainModel:
+        id: int
         field: str
 
-        def __init__(self, field: str) -> None:
+        def __init__(self, id: int, field: str) -> None:
+            self.id = id
             self.field = field
 
-        def model_dump(self) -> dict[str, Any]:
+        def model_dump(self, *args, **kwargs) -> dict[str, Any]:
             return {"field": self.field}
 
         @classmethod
         def model_validate(cls, obj: SimpleSqlaModel) -> Self:
-            return cls(field=obj.field)
+            return cls(id=obj.id, field=obj.field)
 
     crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
     assert crud is not None
@@ -133,10 +140,12 @@ def test_crud_factory_different_attributes():
 
     class SimpleSqlaModel:
         __tablename__ = "simple"
+        id: Mapped[int]
         field1: Mapped[str]
         field2: Mapped[str]
 
     class SimpleDomainModel(BaseModel):
+        id: int
         field1: str
 
     with pytest.raises(DiffAtrrsOnCreateCrud):
@@ -146,9 +155,11 @@ def test_crud_factory_different_attributes():
 def test_crud_class_name():
     class SimpleSqlaModel:
         __tablename__ = "simple"
+        id: Mapped[int]
         field: Mapped[str]
 
     class SimpleDomainModel(BaseModel):
+        id: int
         field: str
 
     crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
@@ -174,14 +185,41 @@ async def test_crud_operations(
 
     # Update
     retrieved.name = "Updated"
-    updated = await crud.update(session, retrieved, retrieved.id)
+    updated = await crud.update(session, retrieved)
     assert updated.name == "Updated"
+
+    # Patch
+    @dataclass
+    class PatchSchema:
+        name: str | None = None
+        description: str | None = None
+
+        def model_dump(self, *, exclude_unset: bool = False) -> dict[str, Any]:
+            result = {}
+
+            for field in fields(self):
+                value = getattr(self, field.name)
+                if exclude_unset:
+                    if field.default is not MISSING and value == field.default:
+                        continue
+
+                    elif field.default_factory is not MISSING and value == field.default_factory():
+                        continue
+
+                result[field.name] = value
+            return result
+
+    data = PatchSchema(name="Patched")
+
+    patched = await crud.patch(session, data, retrieved.id)
+    assert patched.name == "Patched"
+    assert patched.description == "Description"
 
     # List
     models, count = await crud.get_all(session, order_by="id")
     assert len(models) == 1
     assert count == 1
-    assert models[0].name == "Updated"
+    assert models[0].name == "Patched"
 
     # Filter
     filtred = await crud.get_many(session, filter="Description", column="description")
