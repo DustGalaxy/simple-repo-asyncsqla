@@ -1,6 +1,6 @@
 [project]
 name = "simple-repo-asyncsqla"
-version = "0.1.3"
+version = "0.1.4"
 description = "A lightweight and type-safe repository pattern implementation for SQLAlchemy async with Pydantic integration"
 readme = "README.md"
 license = "MIT"
