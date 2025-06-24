@@ -100,6 +100,33 @@ async def example():
             ...
 ```
 
+### Important part is sameness attrs in SQLA and in Domain models as in the example
+
+
+```python
+class User(Base):
+    __tablename__ = "users"
+
+    # attrs: id, name, email, is_active
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str]
+    email: Mapped[str]
+    is_active: Mapped[bool] = mapped_column(default=True)
+
+class UserDTO(BaseModel):
+
+    # attrs: id, name, email, is_active
+    id: int = 0
+    name: str
+    email: str
+    is_active: bool = True
+    
+    model_config = ConfigDict(from_attributes=True)
+
+```
+
+If attrs is not the same on create crud will be raise exception - DiffAtrrsOnCreateCrud.
+
 ### Custom Repository
 
 Extend the base repository with advanced query methods:
