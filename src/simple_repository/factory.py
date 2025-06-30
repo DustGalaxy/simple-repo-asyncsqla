@@ -1,13 +1,12 @@
 from typing import Type, cast
 
-from .abctract import IAsyncCrud
 from .exceptions import DiffAtrrsOnCreateCrud
 from .utils import same_attrs
 from .implementation import AsyncCrud
 from ._types import DM, SA
 
 
-def crud_factory(sqla_model: Type[SA], domain_model: Type[DM]) -> Type[IAsyncCrud[SA, DM]]:
+def crud_factory(sqla_model: Type[SA], domain_model: Type[DM]) -> Type[AsyncCrud[SA, DM]]:
     """Creates a type-safe CRUD repository for the given models."""
     if not same_attrs(sqla_model, domain_model):
         raise DiffAtrrsOnCreateCrud(
@@ -38,4 +37,4 @@ def crud_factory(sqla_model: Type[SA], domain_model: Type[DM]) -> Type[IAsyncCru
             "domain_model": domain_model,
         },
     )
-    return cast(Type[IAsyncCrud[SA, DM]], new_cls)
+    return cast(Type[AsyncCrud[SA, DM]], new_cls)
