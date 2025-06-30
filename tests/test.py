@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from simple_repository.utils import BaseDomainModel
+from simple_repository.utils import BaseDomainModel, BaseSchema
 from src.simple_repository.abctract import IAsyncCrud
 from src.simple_repository.implementation import AsyncCrud
 from src.simple_repository.factory import crud_factory
@@ -108,7 +108,8 @@ async def test_crud_factory_with_dataclass(session: AsyncSession):
     assert created.name == "filled"
     assert created.description is None
 
-    class PatchSchema(BaseModel):
+    @dataclass
+    class PatchSchema(BaseSchema):
         name: str | None = None
         description: str | None = None
 
@@ -144,9 +145,13 @@ async def test_crud_factory_with_class(session: AsyncSession):
     assert created.name == "filled"
     assert created.description is None
 
-    class PatchSchema(BaseModel):
+    class PatchSchema(BaseSchema):
         name: str | None = None
         description: str | None = None
+
+        def __init__(self, name: str | None = None, description: str | None = None) -> None:
+            self.name = name
+            self.description = description
 
     data = PatchSchema(description="...")
     patched = await impl_crud.patch(session, data, created.id)
