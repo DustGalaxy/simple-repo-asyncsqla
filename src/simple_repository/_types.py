@@ -12,7 +12,3 @@ PrimitiveValue = Union[str, UUID, int, float, bool]
 FilterValue = Union[PrimitiveValue, list[PrimitiveValue]]
 IdValue = Union[str, UUID, int]
 Filters = dict[str, str]
-
-
-class CrudMeta(type):
-    pass

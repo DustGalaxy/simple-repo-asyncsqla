@@ -3,14 +3,15 @@ import pytest
 from dataclasses import dataclass, fields, MISSING
 from typing import Self, Any, AsyncGenerator, Type
 
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.simple_repository.repository import AsyncCrud
+from src.simple_repository.abctract import IAsyncCrud
+from src.simple_repository.implementation import AsyncCrud
 from src.simple_repository.factory import crud_factory
-from src.simple_repository.protocols import SqlaModel
+from src.simple_repository.protocols import SqlaModel, DomainModel
 from src.simple_repository.exceptions import DiffAtrrsOnCreateCrud, NotFoundException
-from pydantic import BaseModel, ConfigDict, Field
 
 from tests.database import Base, async_session_maker, create_db, drop_db
 
@@ -64,9 +65,10 @@ def domain_model() -> Type[DomainTestModel]:
 
 
 @pytest.fixture
-def crud(sqla_model, domain_model) -> Type[AsyncCrud[SqlaModel, DomainTestModel]]:
+def crud(sqla_model, domain_model) -> IAsyncCrud[SqlaModel, DomainModel]:
     """Create CRUD repository for tests."""
-    return crud_factory(sqla_model, domain_model)
+    crud_class = crud_factory(sqla_model, domain_model)
+    return crud_class()
 
 
 def test_crud_factory_with_pydantic():
@@ -160,9 +162,9 @@ async def test_crud_factory_with_class(session: AsyncSession):
 
     crud = crud_factory(SqlaTestModel, SimpleDomainModel)
     assert crud is not None
-
+    impl_crud = crud()
     dm = SimpleDomainModel(name="filled")
-    created = await crud.create(session, dm)
+    created = await impl_crud.create(session, dm)
     assert created.id > 0
     assert created.name == "filled"
     assert created.description is None
@@ -172,7 +174,7 @@ async def test_crud_factory_with_class(session: AsyncSession):
         description: str | None = None
 
     data = PatchSchema(description="...")
-    patched = await crud.patch(session, data, created.id)
+    patched = await impl_crud.patch(session, data, created.id)
     assert patched.name == "filled"
     assert patched.description == "..."
 
@@ -211,7 +213,7 @@ def test_crud_class_name():
 
 @pytest.mark.asyncio
 async def test_crud_operations(
-    session: AsyncSession, crud: Type[AsyncCrud[SqlaTestModel, DomainTestModel]], domain_model: Type[DomainTestModel]
+    session: AsyncSession, crud: AsyncCrud[SqlaTestModel, DomainTestModel], domain_model: Type[DomainTestModel]
 ):
     """Test basic CRUD operations."""
     # Create

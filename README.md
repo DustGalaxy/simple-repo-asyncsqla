@@ -42,8 +42,8 @@ class User(Base):
     email: Mapped[str]
     is_active: Mapped[bool] = mapped_column(default=True)
 
-# you can use dataclass or normal class but see protocol - DomainModel
-class UserDTO(BaseModel):
+# You can use dataclass or a regular class, but refer to the protocol - DomainModel
+class UserDomain(BaseModel):
     id: int = 0
     name: str
     email: str
@@ -51,38 +51,42 @@ class UserDTO(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
-# you can use dataclass or normal class but see protocol - Schema
+# You can use dataclass or a regular class, but refer to the protocol - Schema
 class UserPatch(BaseModel):
     name: str | None = None
     email: str | None = None
     is_active: bool | None = None
 
 engine = create_async_engine("sqlite+aiosqlite:///./db.sqlite3")
-async_session = async_sessionmaker(engine, expire_on_commit=False)
+async_session_factory = async_sessionmaker(engine, expire_on_commit=False) # Use session factory
 
-user_crud = crud_factory(User, UserDTO)
+# Create the repository class for User
+UserRepositoryClass = crud_factory(User, UserDomain)
+# Create a repository instance, passing the session factory
+user_repo = UserRepositoryClass()
 
 async def example():
-    async with async_session() as session:
+    # Operations are now called on the repository instance
+    async with async_session_factory() as session:
         # Create
-        new_user = await user_crud.create(
+        new_user = await user_repo.create(
             session, 
-            UserDTO(name="John Doe", email="john@example.com")
+            UserDomain(name="John Doe", email="john@example.com")
         )
         
         # Read
-        user = await user_crud.get_one(session, new_user.id)
+        user = await user_repo.get_one(session, new_user.id)
 
         # Update
         user.name = "John Smith"
-        updated = await user_crud.update(session, user)
+        updated = await user_repo.update(session, user)
 
         # Patch
         data = UserPatch(name="Fredy Smith", email="fredy@example.com")
-        patched = await user_crud.patch(session, data, updated.id)
+        patched = await user_repo.patch(session, data, updated.id) # Pass ID for patch
 
         # List with pagination
-        users, total = await user_crud.get_all(
+        users, total = await user_repo.get_all(
             session,
             offset=0,
             limit=10,
@@ -91,13 +95,14 @@ async def example():
         )
         
         # Delete
-        await user_crud.remove(session, user.id)
+        await user_repo.remove(session, user.id)
         
         # Get exception
         try:
-            user = await user_crud.get_one(session, new_user.name, column="name")
+            user = await user_repo.get_one(session, new_user.name, column="name")
         except NotFoundException: 
             ...
+
 ```
 
 ### Important part is sameness attrs in SQLA and in Domain models as in the example
@@ -125,7 +130,7 @@ class UserDTO(BaseModel):
 
 ```
 
-If attrs is not the same on create crud will be raise exception - DiffAtrrsOnCreateCrud.
+If attributes do not match, DiffAtrrsOnCreateCrud exception will be raised upon CRUD creation.
 
 ### Custom Repository
 
@@ -135,12 +140,24 @@ Extend the base repository with advanced query methods:
 from sqlalchemy import select, case, func, text
 
 from simple_repository import crud_factory
+from simple_repository.abctract import IAsyncCrud
 
 from .models.user import User
-from .domains.user import UserDTO
+from .domains.user import UserDomain
 
-class UserRepository(crud_factory(User, UserDTO)):
-    """Custom repository with advanced analytics capabilities."""
+# Define interface for custom operations OR do not doit 
+class IUserRepository(IAsyncCrud[UserSQLA, UserDomain]):
+    @abstractmethod
+    async def get_user_activity_stats(
+        self,
+        min_orders: int = 5,
+        days_window: int = 30
+    ) -> list[dict]:
+        pass
+
+# Inherit from the interface and from the class created by the factory
+class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain)):
+    """Custom repository with advanced analytical capabilities."""
     
     @classmethod
     async def get_user_activity_stats(
@@ -199,17 +216,20 @@ class UserRepository(crud_factory(User, UserDTO)):
 
 # Usage example
 async def analyze_user_activity(session):
-    stats = await UserRepository.get_user_activity_stats(
+    user_repo_instance = UserRepository()
+    stats = await user_repo_instance.get_user_activity_stats(
         session,
         min_orders=5,   
         days_window=30   
     )
+    return stats
     
 ```
 
 ### Error Handling
 
 ```python
+from fastapi import HTTPException
 from simple_repository.exceptions import NotFoundException
 
 from .my_repository import user_crud
@@ -221,7 +241,7 @@ async def get_user(session, user_id: int) -> UserDTO:
         raise HTTPException(status_code=404, detail="User not found")
 ```
 
-### Support operations out the box
+### Out-of-the-box Supported Operations
 
  - create
  - create_many
@@ -234,6 +254,21 @@ async def get_user(session, user_id: int) -> UserDTO:
  - remove_many
  - count
 
+### Class Attribute Protection
+
+The library now uses the FrozenClassAttributesMeta metaclass to prevent accidental or unintended reassignment of sqla_model and domain_model attributes at the class level after they have been set by crud_factory. This ensures the stability and predictability of repository behavior.
+
+Attempting to modify these attributes after class creation will result in an AttributeError.
+
+```python
+# Example:
+MyUserRepoClass = crud_factory(UserSQLA, UserDomain)
+try:
+    MyUserRepoClass.sqla_model = SomeOtherSQLA # This will raise an AttributeError
+    MyUserRepoClass.domain_model = SomeOtherDomain # This also will raise an AttributeError
+except AttributeError as e:
+    print(f"Error: {e}")
+```
 
 ## Contributing
 
