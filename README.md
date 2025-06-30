@@ -42,7 +42,7 @@ class User(Base):
     email: Mapped[str]
     is_active: Mapped[bool] = mapped_column(default=True)
 
-# You can use dataclass or a regular class, but refer to the protocol - DomainModel
+# You can use dataclass or a regular class with inherit BaseDomainModel, refer to the protocol - DomainModel for details
 class UserDomain(BaseModel):
     id: int = 0
     name: str
@@ -51,7 +51,7 @@ class UserDomain(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
-# You can use dataclass or a regular class, but refer to the protocol - Schema
+# You can use dataclass or a regular class, refer to the protocol - Schema for details
 class UserPatch(BaseModel):
     name: str | None = None
     email: str | None = None
@@ -145,7 +145,7 @@ from simple_repository.abctract import IAsyncCrud
 from .models.user import User
 from .domains.user import UserDomain
 
-# Define interface for custom operations OR do not doit 
+# Define interface for custom operations OR don't
 class IUserRepository(IAsyncCrud[UserSQLA, UserDomain]):
     @abstractmethod
     async def get_user_activity_stats(
@@ -155,7 +155,7 @@ class IUserRepository(IAsyncCrud[UserSQLA, UserDomain]):
     ) -> list[dict]:
         pass
 
-# Inherit from the interface and from the class created by the factory
+# Inherit from the interface (if defined) and from the class created by the factory
 class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain)):
     """Custom repository with advanced analytical capabilities."""
     

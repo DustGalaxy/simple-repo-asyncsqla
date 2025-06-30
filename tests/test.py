@@ -1,12 +1,12 @@
-import inspect
 import pytest
 from dataclasses import dataclass, fields, MISSING
-from typing import Self, Any, AsyncGenerator, Type
+from typing import Any, AsyncGenerator, Type
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from simple_repository.utils import BaseDomainModel
 from src.simple_repository.abctract import IAsyncCrud
 from src.simple_repository.implementation import AsyncCrud
 from src.simple_repository.factory import crud_factory
@@ -87,84 +87,23 @@ def test_crud_factory_with_pydantic():
     assert crud is not None
 
 
-def test_crud_factory_with_dataclass():
+@pytest.mark.asyncio
+async def test_crud_factory_with_dataclass(session: AsyncSession):
     """Test crud_factory with dataclass model."""
 
-    class SimpleSqlaModel:
-        __tablename__ = "simple"
-        id: Mapped[int]
-        field: Mapped[str]
-
     @dataclass
-    class SimpleDomainModel:
-        id: int
-        field: str
-
-        def model_dump(self, *, exclude_unset=False, **kwargs) -> dict[str, Any]:
-            result = {}
-
-            for field in fields(self):
-                value = getattr(self, field.name)
-                if exclude_unset:
-                    if field.default is not MISSING and value == field.default:
-                        continue
-
-                    elif field.default_factory is not MISSING and value == field.default_factory():
-                        continue
-
-                result[field.name] = value
-            return result
-
-        @classmethod
-        def model_validate(cls, obj: SimpleSqlaModel) -> Self:
-            return cls(id=obj.id, field=obj.field)
-
-    crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
-    assert crud is not None
-
-
-@pytest.mark.asyncio
-async def test_crud_factory_with_class(session: AsyncSession):
-    """Test crud_factory with class model."""
-
-    class SimpleDomainModel:
-        id: int
-        name: str
-        description: str | None
-
-        def __init__(self, id: int = 0, name: str = "", description: str | None = None) -> None:
-            self.id = id
-            self.name = name
-            self.description = description
-
-        def model_dump(self, *args, exclude_unset=False, **kwargs) -> dict[str, Any]:
-            if not exclude_unset:
-                return self.__dict__.copy()
-
-            sig = inspect.signature(self.__init__)
-            defaults = {}
-
-            for param_name, param in sig.parameters.items():
-                if param_name != "self" and param.default is not inspect.Parameter.empty:
-                    defaults[param_name] = param.default
-
-            result = {}
-            for key, value in self.__dict__.items():
-                if key in defaults and value == defaults[key]:
-                    continue
-                result[key] = value
-
-            return result
-
-        @classmethod
-        def model_validate(cls, obj: SqlaTestModel) -> Self:
-            return cls(id=obj.id, name=obj.name, description=obj.description)
+    class SimpleDomainModel(BaseDomainModel):
+        id: int = 0
+        name: str = ""
+        description: str | None = None
 
     crud = crud_factory(SqlaTestModel, SimpleDomainModel)
     assert crud is not None
+
     impl_crud = crud()
     dm = SimpleDomainModel(name="filled")
     created = await impl_crud.create(session, dm)
+
     assert created.id > 0
     assert created.name == "filled"
     assert created.description is None
@@ -175,6 +114,43 @@ async def test_crud_factory_with_class(session: AsyncSession):
 
     data = PatchSchema(description="...")
     patched = await impl_crud.patch(session, data, created.id)
+
+    assert patched.name == "filled"
+    assert patched.description == "..."
+
+
+@pytest.mark.asyncio
+async def test_crud_factory_with_class(session: AsyncSession):
+    """Test crud_factory with class model."""
+
+    class SimpleDomainModel(BaseDomainModel):
+        id: int
+        name: str
+        description: str | None
+
+        def __init__(self, id: int = 0, name: str = "", description: str | None = None) -> None:
+            self.id = id
+            self.name = name
+            self.description = description
+
+    crud = crud_factory(SqlaTestModel, SimpleDomainModel)
+    assert crud is not None
+
+    impl_crud = crud()
+    dm = SimpleDomainModel(name="filled")
+    created = await impl_crud.create(session, dm)
+
+    assert created.id > 0
+    assert created.name == "filled"
+    assert created.description is None
+
+    class PatchSchema(BaseModel):
+        name: str | None = None
+        description: str | None = None
+
+    data = PatchSchema(description="...")
+    patched = await impl_crud.patch(session, data, created.id)
+
     assert patched.name == "filled"
     assert patched.description == "..."
 
