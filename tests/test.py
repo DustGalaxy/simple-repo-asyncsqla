@@ -188,7 +188,6 @@ def test_crud_class_name():
         field: str
 
     crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
-    print(crud.__name__)
     assert crud.__name__ == "SimpleSqlaModelRepository"
 
 
