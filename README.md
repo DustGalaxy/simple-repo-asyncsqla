@@ -144,6 +144,7 @@ from simple_repository.abctract import IAsyncCrud
 
 from .models.user import User
 from .domains.user import UserDomain
+from .db import async_session_factory
 
 # Define interface for custom operations OR don't
 class IUserRepository(IAsyncCrud[UserSQLA, UserDomain]):
@@ -158,10 +159,8 @@ class IUserRepository(IAsyncCrud[UserSQLA, UserDomain]):
 # Inherit from the interface (if defined) and from the class created by the factory
 class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain)):
     """Custom repository with advanced analytical capabilities."""
-    
-    @classmethod
     async def get_user_activity_stats(
-        cls,
+        self,
         session,
         min_orders: int = 5,
         days_window: int = 30
@@ -189,9 +188,9 @@ class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain)):
         
         query = (
             select(
-                cls.sqla_model.id,
-                cls.sqla_model.name,
-                cls.sqla_model.email,
+                self.sqla_model.id,
+                self.sqla_model.name,
+                self.sqla_model.email,
                 orders_stats.c.order_count,
                 orders_stats.c.total_spent,
                 orders_stats.c.avg_order_value,
@@ -206,8 +205,8 @@ class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain)):
                     order_by=orders_stats.c.total_spent
                 ).label('spending_percentile')
             )
-            .join(orders_stats, cls.sqla_model.id == orders_stats.c.user_id)
-            .where(cls.sqla_model.is_active == True)
+            .join(orders_stats, self.sqla_model.id == orders_stats.c.user_id)
+            .where(self.sqla_model.is_active == True)
             .order_by(text('engagement_score DESC'))
         )
         
@@ -215,26 +214,36 @@ class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain)):
         return list(result.mappings().all())
 
 # Usage example
-async def analyze_user_activity(session):
+async def analyze_user_activity():
     user_repo_instance = UserRepository()
-    stats = await user_repo_instance.get_user_activity_stats(
-        session,
-        min_orders=5,   
-        days_window=30   
-    )
-    return stats
+    with async_session_factory() as session:
+        stats = await user_repo_instance.get_user_activity_stats(
+            session,
+            min_orders=5,   
+            days_window=30   
+        )
+        return stats
     
 ```
 
 ### Error Handling
 
 ```python
-from fastapi import HTTPException
+from fastapi import HTTPException, APIRouter
 from simple_repository.exceptions import NotFoundException
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from .db import async_session_factory
 from .my_repository import user_crud
+from .domains.user import UserDomain
 
-async def get_user(session, user_id: int) -> UserDTO:
+router = APIRouter("/user")
+
+@router.get("/{user_id}")
+async def get_user(
+    session: Annotated[AsyncSession, Depends(async_session_factory)], 
+    user_id: int,
+) -> UserDomain:
     try:
         return await user_crud.get_one(session, user_id)
     except NotFoundException:
