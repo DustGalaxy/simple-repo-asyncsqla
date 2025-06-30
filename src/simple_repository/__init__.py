@@ -4,9 +4,12 @@ A lightweight and type-safe repository pattern implementation for SQLAlchemy asy
 """
 
 from .factory import crud_factory
+from .utils import BaseDomainModel, BaseSchema
 
 __all__ = [
     "crud_factory",
+    "BaseDomainModel",
+    "BaseSchema",
 ]
 
-__version__ = "0.1.3"
+__version__ = "1.0.0"

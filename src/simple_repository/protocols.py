@@ -1,6 +1,11 @@
-from typing import Any, Protocol, Self
+from typing import Any, Protocol, Self, TYPE_CHECKING
 
-from pydantic import BaseModel
+if TYPE_CHECKING:
+    from pydantic import BaseModel as PydanticBaseModel
+else:
+
+    class PydanticBaseModel:
+        pass
 
 
 class SqlaModel(Protocol):
@@ -12,7 +17,7 @@ class DomainModel(Protocol):
     id: Any
 
     @classmethod
-    def model_validate(cls, obj: "BaseModel | object", *args, **kwagrs) -> Self: ...
+    def model_validate(cls, obj: "PydanticBaseModel | object", *args, **kwagrs) -> Self: ...
     def model_dump(self, *args, exclude_unset: bool = False, **kwagrs) -> dict[str, Any]: ...
 
 

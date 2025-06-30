@@ -1,10 +1,16 @@
 import inspect
-from typing import Any, Self, Type, get_type_hints
+from typing import Any, Self, Type, get_type_hints, TYPE_CHECKING
 from dataclasses import is_dataclass, fields, asdict, MISSING
 
-from pydantic import BaseModel
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import inspect as sqla_inspect
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel as PydanticBaseModel
+else:
+
+    class PydanticBaseModel:
+        pass
 
 
 def get_attrs(model: Type[Any]) -> set[str]:
@@ -87,7 +93,7 @@ class BaseDomainModel:
     id: Any
 
     @classmethod
-    def model_validate(cls, obj: "BaseModel | object", *args, **kwargs) -> Self:
+    def model_validate(cls, obj: "PydanticBaseModel | object", *args, **kwargs) -> Self:
         """
         Implementation of model_validate for creating an instance of the domain model.
         Automatically copies attributes from 'obj' to a new instance of 'cls'.

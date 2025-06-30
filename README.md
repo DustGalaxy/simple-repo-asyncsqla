@@ -51,7 +51,7 @@ class UserDomain(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
-# You can use dataclass or a regular class, refer to the protocol - Schema for details
+# You can use dataclass or a regular class with inherit BaseSchema, refer to the protocol - Schema for details
 class UserPatch(BaseModel):
     name: str | None = None
     email: str | None = None
