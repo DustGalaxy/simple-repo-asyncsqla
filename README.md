@@ -138,11 +138,12 @@ Extend the base repository with advanced query methods:
 
 ```python
 from sqlalchemy import select, case, func, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from simple_repository import crud_factory
 from simple_repository.abctract import IAsyncCrud
 
-from .models.user import User
+from .models.user import User as UserSQLA
 from .domains.user import UserDomain
 from .db import async_session_factory
 
@@ -151,6 +152,7 @@ class IUserRepository(IAsyncCrud[UserSQLA, UserDomain]):
     @abstractmethod
     async def get_user_activity_stats(
         self,
+        session: AsyncSession,
         min_orders: int = 5,
         days_window: int = 30
     ) -> list[dict]:
@@ -161,7 +163,7 @@ class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain)):
     """Custom repository with advanced analytical capabilities."""
     async def get_user_activity_stats(
         self,
-        session,
+        session: AsyncSession,
         min_orders: int = 5,
         days_window: int = 30
     ) -> list[dict]:
