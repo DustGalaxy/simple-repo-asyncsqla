@@ -47,32 +47,30 @@ def same_attrs(model1: Type[Any], model2: Type[Any]) -> bool:
 
 class BaseSchema:
     def model_dump(self, *args, exclude_unset: bool = False, **kwargs) -> dict[str, Any]:
-        """
-        Implementation of model_dump for converting a schema instance to a dictionary.
-        """
         if is_dataclass(self):
             data = asdict(self)
             if exclude_unset:
                 defaults = {f.name: f.default for f in fields(self) if f.default is not MISSING}
                 return {k: v for k, v in data.items() if k not in defaults or v != defaults[k]}
             return data
+        else:
+            result = self.__dict__.copy()
+            if exclude_unset:
+                filtered_result = {}
+                sig = inspect.signature(self.__init__)
+                init_defaults = {
+                    p.name: p.default
+                    for p in sig.parameters.values()
+                    if p.name != "self" and p.default is not inspect.Parameter.empty
+                }
+                annotations = get_type_hints(self.__class__)
 
-        result = self.__dict__.copy()
-        if exclude_unset:
-            sig = inspect.signature(self.__init__)
-            defaults = {}
-            for param_name, param in sig.parameters.items():
-                if param_name != "self" and param.default is not inspect.Parameter.empty:
-                    defaults[param_name] = param.default
-
-            filtered_result = {}
-            for key, value in result.items():
-                if key in defaults and value == defaults[key]:
-                    continue
-                filtered_result[key] = value
-            return filtered_result
-
-        return result
+                for key, value in result.items():
+                    if key in annotations and key in init_defaults and value == init_defaults[key]:
+                        continue
+                    filtered_result[key] = value
+                return filtered_result
+            return result
 
 
 class BaseDomainModel:
