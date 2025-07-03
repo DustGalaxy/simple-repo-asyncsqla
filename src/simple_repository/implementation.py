@@ -9,11 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .abctract import IAsyncCrud, FrozenClassAttributesMeta
 
 from .exceptions import IntegrityConflictException, NotFoundException, RepositoryException
-from ._types import SA, DM, PrimitiveValue, FilterValue, IdValue, Filters
-from .protocols import Schema
+from ._types import SA, DM, CS, PS, PrimitiveValue, FilterValue, IdValue, Filters
 
 
-class AsyncCrud(IAsyncCrud[SA, DM], metaclass=FrozenClassAttributesMeta):
+class AsyncCrud(IAsyncCrud[SA, DM, CS, PS], metaclass=FrozenClassAttributesMeta):
     sqla_model: Type[SA]
     domain_model: Type[DM]
 
@@ -34,7 +33,7 @@ class AsyncCrud(IAsyncCrud[SA, DM], metaclass=FrozenClassAttributesMeta):
     async def create(
         self,
         session: AsyncSession,
-        data: DM,
+        data: CS,
     ) -> DM:
         """Create a single entity"""
         try:
@@ -169,7 +168,7 @@ class AsyncCrud(IAsyncCrud[SA, DM], metaclass=FrozenClassAttributesMeta):
     async def patch(
         self,
         session: AsyncSession,
-        data: Schema,
+        data: PS,
         id_: IdValue,
         column: str = "id",
     ) -> DM:

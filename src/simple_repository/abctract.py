@@ -3,8 +3,7 @@ from typing import Any, Generic, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ._types import SA, DM, FilterValue, Filters, IdValue
-from .protocols import Schema
+from ._types import SA, DM, CS, PS, FilterValue, Filters, IdValue
 
 
 # --- Метакласс для защиты атрибутов класса ---
@@ -30,7 +29,7 @@ class FrozenClassAttributesMeta(ABCMeta):
 
 
 # --- Интерфейс базового репозитория ---
-class IAsyncCrud(ABC, Generic[SA, DM]):
+class IAsyncCrud(ABC, Generic[SA, DM, CS, PS]):
     """
     Abstract base class that defines the interface for async CRUD operations.
     Parameterized by SQLAlchemy model (SA) and domain model (DM).
@@ -80,7 +79,7 @@ class IAsyncCrud(ABC, Generic[SA, DM]):
     async def create(
         self,
         session: AsyncSession,
-        data: DM,
+        data: CS,
     ) -> DM:
         """
         Asynchronously create a new record in the database from a domain model.
@@ -114,7 +113,7 @@ class IAsyncCrud(ABC, Generic[SA, DM]):
     async def patch(
         self,
         session: AsyncSession,
-        data: Schema,
+        data: PS,
         id_: IdValue,
         column: str = "id",
     ) -> DM:
