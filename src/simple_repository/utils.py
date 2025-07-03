@@ -1,16 +1,9 @@
 import inspect
-from typing import Any, Self, Type, get_type_hints, TYPE_CHECKING
+from typing import Any, Mapping, Self, Type, Union, get_type_hints
 from dataclasses import is_dataclass, fields, asdict, MISSING
 
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import inspect as sqla_inspect
-
-if TYPE_CHECKING:
-    from pydantic import BaseModel as PydanticBaseModel
-else:
-
-    class PydanticBaseModel:
-        pass
 
 
 def get_attrs(model: Type[Any]) -> set[str]:
@@ -93,51 +86,117 @@ class BaseDomainModel:
     id: Any
 
     @classmethod
-    def model_validate(cls, obj: "PydanticBaseModel | object", *args, **kwargs) -> Self:
+    def _get_class_fields_info(cls) -> dict[str, Any]:
         """
-        Implementation of model_validate for creating an instance of the domain model.
+        Helper to get field names and their types, and default values
+        for the class, considering both dataclasses and regular classes.
+        """
+        field_info = {}
+        if is_dataclass(cls):
+            for f in fields(cls):
+                field_info[f.name] = {
+                    "type": f.type,
+                    "has_default": f.default is not MISSING,
+                    "default_value": f.default if f.default is not MISSING else None,
+                    "is_init_arg": f.init,
+                }
+        else:
+            annotations = get_type_hints(cls)
+            init_signature = inspect.signature(cls.__init__)
+            init_params = init_signature.parameters
+
+            for name, param in init_params.items():
+                if name == "self":
+                    continue
+                field_info[name] = {
+                    "type": annotations.get(name, Any),
+                    "has_default": param.default is not inspect.Parameter.empty,
+                    "default_value": param.default if param.default is not inspect.Parameter.empty else None,
+                    "is_init_arg": True,
+                }
+            for name, type_hint in annotations.items():
+                if name not in field_info:
+                    field_info[name] = {
+                        "type": type_hint,
+                        "has_default": False,
+                        "default_value": None,
+                        "is_init_arg": False,
+                    }
+        return field_info
+
+    @classmethod
+    def model_validate(cls, obj: Union[Mapping[str, Any], object]) -> Self:
+        """
+        Creates an instance of the domain model from an object (e.g., ORM model) or a dictionary.
         Automatically copies attributes from 'obj' to a new instance of 'cls'.
         """
-        instance = cls() if not inspect.isfunction(cls.__init__) else cls(*args, **kwargs)
+        class_fields_info = cls._get_class_fields_info()
+        init_args = {}
+        post_init_attrs = {}
 
-        if is_dataclass(cls):
-            field_names = {f.name for f in fields(cls)}
-            init_args = {name: getattr(obj, name) for name in field_names if hasattr(obj, name)}
-            return cls(**init_args)
+        source_data = {}
+        if isinstance(obj, Mapping):
+            source_data = obj
+        else:
+            for attr_name in dir(obj):
+                if not attr_name.startswith("_") and hasattr(obj, attr_name):
+                    source_data[attr_name] = getattr(obj, attr_name)
 
-        for attr_name in get_type_hints(cls).keys():
-            if hasattr(obj, attr_name):
-                setattr(instance, attr_name, getattr(obj, attr_name))
+        for field_name, info in class_fields_info.items():
+            value_from_source = source_data.get(field_name, MISSING)
 
-        if hasattr(obj, "id") and not hasattr(instance, "id"):
-            instance.id = obj.id  # type: ignore
+            if value_from_source is not MISSING:
+                if info["is_init_arg"]:
+                    init_args[field_name] = value_from_source
+                else:
+                    post_init_attrs[field_name] = value_from_source
+            elif info["has_default"]:
+                if info["is_init_arg"]:
+                    init_args[field_name] = info["default_value"]
+                else:
+                    post_init_attrs[field_name] = info["default_value"]
+
+        instance = None
+        try:
+            instance = cls(**init_args)
+        except TypeError as e:
+            print(
+                f"Warning: Could not initialize {cls.__name__} with provided init_args: {e}. Attempting to create empty instance and populate."
+            )
+            try:
+                instance = cls()
+            except TypeError:
+                raise TypeError(
+                    f"Cannot initialize {cls.__name__}. Missing required arguments for __init__ or source object is incomplete. Original error: {e}"
+                )
+
+        for attr_name, attr_value in post_init_attrs.items():
+            setattr(instance, attr_name, attr_value)
 
         return instance
 
     def model_dump(self, *args, exclude_unset: bool = False, **kwargs) -> dict[str, Any]:
-        """
-        Implementation of model_dump for converting a domain model instance to a dictionary.
-        """
         if is_dataclass(self):
             data = asdict(self)
             if exclude_unset:
                 defaults = {f.name: f.default for f in fields(self) if f.default is not MISSING}
                 return {k: v for k, v in data.items() if k not in defaults or v != defaults[k]}
             return data
+        else:
+            result = self.__dict__.copy()
+            if exclude_unset:
+                filtered_result = {}
+                sig = inspect.signature(self.__init__)
+                init_defaults = {
+                    p.name: p.default
+                    for p in sig.parameters.values()
+                    if p.name != "self" and p.default is not inspect.Parameter.empty
+                }
+                annotations = get_type_hints(self.__class__)
 
-        result = self.__dict__.copy()
-        if exclude_unset:
-            sig = inspect.signature(self.__init__)
-            defaults = {}
-            for param_name, param in sig.parameters.items():
-                if param_name != "self" and param.default is not inspect.Parameter.empty:
-                    defaults[param_name] = param.default
-
-            filtered_result = {}
-            for key, value in result.items():
-                if key in defaults and value == defaults[key]:
-                    continue
-                filtered_result[key] = value
-            return filtered_result
-
-        return result
+                for key, value in result.items():
+                    if key in annotations and key in init_defaults and value == init_defaults[key]:
+                        continue
+                    filtered_result[key] = value
+                return filtered_result
+            return result

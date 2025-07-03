@@ -1,8 +1,8 @@
 import pytest
-from dataclasses import dataclass, fields, MISSING
-from typing import Any, AsyncGenerator, Type
+from dataclasses import dataclass
+from typing import AsyncGenerator, Type
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,7 +51,7 @@ def sqla_model() -> Type[SqlaTestModel]:
 class DomainTestModel(BaseModel):
     """Pydantic model for testing."""
 
-    id: int = Field(default=0)
+    id: int
     name: str
     description: str | None = None
 
@@ -64,26 +64,46 @@ def domain_model() -> Type[DomainTestModel]:
     return DomainTestModel
 
 
+class CreateSchema(BaseModel):
+    name: str
+    description: str | None = None
+
+
 @pytest.fixture
-def crud(sqla_model, domain_model) -> IAsyncCrud[SqlaModel, DomainModel]:
+def create_schema() -> Type[CreateSchema]:
+    """Pydantic schema for basic tests."""
+    return CreateSchema
+
+
+class PatchSchema(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+@pytest.fixture
+def patch_schema() -> Type[PatchSchema]:
+    """Pydantic schema for basic tests."""
+    return PatchSchema
+
+
+@pytest.fixture
+def crud(
+    sqla_model, domain_model, create_schema, patch_schema
+) -> IAsyncCrud[SqlaModel, DomainModel, CreateSchema, PatchSchema]:
     """Create CRUD repository for tests."""
-    crud_class = crud_factory(sqla_model, domain_model)
+    crud_class = crud_factory(sqla_model, domain_model, create_schema, patch_schema)
     return crud_class()
 
 
-def test_crud_factory_with_pydantic():
+def test_crud_factory_with_pydantic(
+    sqla_model: Type[SqlaTestModel],
+    domain_model: Type[DomainTestModel],
+    create_schema: Type[CreateSchema],
+    patch_schema: Type[PatchSchema],
+):
     """Test crud_factory with Pydantic model."""
 
-    class SimpleSqlaModel:
-        __tablename__ = "simple"
-        id: Mapped[int]
-        field: Mapped[str]
-
-    class SimpleDomainModel(BaseModel):
-        id: int
-        field: str
-
-    crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
+    crud = crud_factory(sqla_model, domain_model, create_schema, patch_schema)
     assert crud is not None
 
 
@@ -93,27 +113,32 @@ async def test_crud_factory_with_dataclass(session: AsyncSession):
 
     @dataclass
     class SimpleDomainModel(BaseDomainModel):
-        id: int = 0
-        name: str = ""
+        id: int
+        name: str
         description: str | None = None
 
-    crud = crud_factory(SqlaTestModel, SimpleDomainModel)
+    @dataclass
+    class DCCreateSchema(BaseSchema):
+        name: str
+        description: str | None = None
+
+    @dataclass
+    class DCPatchSchema(BaseSchema):
+        name: str | None = None
+        description: str | None = None
+
+    crud = crud_factory(SqlaTestModel, SimpleDomainModel, DCCreateSchema, DCPatchSchema)
     assert crud is not None
 
     impl_crud = crud()
-    dm = SimpleDomainModel(name="filled")
+    dm = DCCreateSchema(name="filled")
     created = await impl_crud.create(session, dm)
 
     assert created.id > 0
     assert created.name == "filled"
     assert created.description is None
 
-    @dataclass
-    class PatchSchema(BaseSchema):
-        name: str | None = None
-        description: str | None = None
-
-    data = PatchSchema(description="...")
+    data = DCPatchSchema(description="...")
     patched = await impl_crud.patch(session, data, created.id)
 
     assert patched.name == "filled"
@@ -134,18 +159,7 @@ async def test_crud_factory_with_class(session: AsyncSession):
             self.name = name
             self.description = description
 
-    crud = crud_factory(SqlaTestModel, SimpleDomainModel)
-    assert crud is not None
-
-    impl_crud = crud()
-    dm = SimpleDomainModel(name="filled")
-    created = await impl_crud.create(session, dm)
-
-    assert created.id > 0
-    assert created.name == "filled"
-    assert created.description is None
-
-    class PatchSchema(BaseSchema):
+    class ClassPatchSchema(BaseSchema):
         name: str | None = None
         description: str | None = None
 
@@ -153,7 +167,26 @@ async def test_crud_factory_with_class(session: AsyncSession):
             self.name = name
             self.description = description
 
-    data = PatchSchema(description="...")
+    class ClassCreateSchema(BaseSchema):
+        name: str
+        description: str | None
+
+        def __init__(self, name: str, description: str | None = None) -> None:
+            self.name = name
+            self.description = description
+
+    crud = crud_factory(SqlaTestModel, SimpleDomainModel, ClassCreateSchema, ClassPatchSchema)
+    assert crud is not None
+
+    impl_crud = crud()
+    dm = ClassCreateSchema(name="filled")
+    created = await impl_crud.create(session, dm)
+
+    assert created.id > 0
+    assert created.name == "filled"
+    assert created.description is None
+
+    data = ClassPatchSchema(description="...")
     patched = await impl_crud.patch(session, data, created.id)
 
     assert patched.name == "filled"
@@ -174,7 +207,7 @@ def test_crud_factory_different_attributes():
         field1: str
 
     with pytest.raises(DiffAtrrsOnCreateCrud):
-        crud_factory(SimpleSqlaModel, SimpleDomainModel)
+        crud_factory(SimpleSqlaModel, SimpleDomainModel, CreateSchema, PatchSchema)
 
 
 def test_crud_class_name():
@@ -187,17 +220,21 @@ def test_crud_class_name():
         id: int
         field: str
 
-    crud = crud_factory(SimpleSqlaModel, SimpleDomainModel)
+    crud = crud_factory(SimpleSqlaModel, SimpleDomainModel, CreateSchema, PatchSchema)
     assert crud.__name__ == "SimpleSqlaModelRepository"
 
 
 @pytest.mark.asyncio
 async def test_crud_operations(
-    session: AsyncSession, crud: AsyncCrud[SqlaTestModel, DomainTestModel], domain_model: Type[DomainTestModel]
+    session: AsyncSession,
+    crud: AsyncCrud[SqlaTestModel, DomainTestModel, CreateSchema, PatchSchema],
+    domain_model: Type[DomainTestModel],
+    create_schema: Type[CreateSchema],
+    patch_schema: Type[PatchSchema],
 ):
     """Test basic CRUD operations."""
     # Create
-    model = domain_model(name="Test", description="Description")
+    model = create_schema(name="Test", description="Description")
     created = await crud.create(session, model)
     assert created.id > 0
     assert created.name == "Test"
@@ -213,27 +250,7 @@ async def test_crud_operations(
     assert updated.name == "Updated"
 
     # Patch
-    @dataclass
-    class PatchSchema:
-        name: str | None = None
-        description: str | None = None
-
-        def model_dump(self, *, exclude_unset: bool = False) -> dict[str, Any]:
-            result = {}
-
-            for field in fields(self):
-                value = getattr(self, field.name)
-                if exclude_unset:
-                    if field.default is not MISSING and value == field.default:
-                        continue
-
-                    elif field.default_factory is not MISSING and value == field.default_factory():
-                        continue
-
-                result[field.name] = value
-            return result
-
-    data = PatchSchema(name="Patched")
+    data = patch_schema(name="Patched")
 
     patched = await crud.patch(session, data, retrieved.id)
     assert patched.name == "Patched"
@@ -244,6 +261,7 @@ async def test_crud_operations(
     assert len(models) == 1
     assert count == 1
     assert models[0].name == "Patched"
+    assert isinstance(models[0], domain_model)
 
     # Filter
     filtred = await crud.get_many(session, filter="Description", column="description")
