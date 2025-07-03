@@ -6,7 +6,7 @@ A lightweight and type-safe repository pattern implementation for SQLAlchemy asy
 
 - 🚀 Async-first design
 - 🔒 Type-safe CRUD operations
-- 🎯 Easy integration with SQLAlchemy models
+- ⚗ Integration with SQLAlchemy
 - 📦 Pydantic support out of the box
 - 🛠 Generic repository pattern implementation
 - 📝 Full type hints support
@@ -44,12 +44,18 @@ class User(Base):
 
 # You can use dataclass or a regular class with inherit BaseDomainModel, refer to the protocol - DomainModel for details
 class UserDomain(BaseModel):
-    id: int = 0
+    id: int
     name: str
     email: str
-    is_active: bool = True
+    is_active: bool
     
     model_config = ConfigDict(from_attributes=True)
+
+# You can use dataclass or a regular class with inherit BaseSchema, refer to the protocol - Schema for details
+class UserCreate(BaseModel):
+    name: str 
+    email: str 
+    is_active: bool | None = None
 
 # You can use dataclass or a regular class with inherit BaseSchema, refer to the protocol - Schema for details
 class UserPatch(BaseModel):
@@ -61,7 +67,7 @@ engine = create_async_engine("sqlite+aiosqlite:///./db.sqlite3")
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False) # Use session factory
 
 # Create the repository class for User
-UserRepositoryClass = crud_factory(User, UserDomain)
+UserRepositoryClass = crud_factory(User, UserDomain, UserCreate, UserPatch)
 # Create a repository instance, passing the session factory
 user_repo = UserRepositoryClass()
 
@@ -71,11 +77,11 @@ async def example():
         # Create
         new_user = await user_repo.create(
             session, 
-            UserDomain(name="John Doe", email="john@example.com")
+            UserCreate(name="John Doe", email="john@example.com")
         )
         
         # Read
-        user = await user_repo.get_one(session, new_user.id)
+        user: UserDomain = await user_repo.get_one(session, new_user.id)
 
         # Update
         user.name = "John Smith"
@@ -118,13 +124,13 @@ class User(Base):
     email: Mapped[str]
     is_active: Mapped[bool] = mapped_column(default=True)
 
-class UserDTO(BaseModel):
+class UserDomain(BaseModel):
 
     # attrs: id, name, email, is_active
-    id: int = 0
+    id: int
     name: str
     email: str
-    is_active: bool = True
+    is_active: bool
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -145,10 +151,11 @@ from simple_repository.abctract import IAsyncCrud
 
 from .models.user import User as UserSQLA
 from .domains.user import UserDomain
+from .schemes.user import UserCreate, UserPatch
 from .db import async_session_factory
 
 # Define interface for custom operations OR don't
-class IUserRepository(IAsyncCrud[UserSQLA, UserDomain]):
+class IUserRepository(IAsyncCrud[UserSQLA, UserDomain, UserCreate, UserPatch]):
     @abstractmethod
     async def get_user_activity_stats(
         self,
@@ -159,7 +166,7 @@ class IUserRepository(IAsyncCrud[UserSQLA, UserDomain]):
         pass
 
 # Inherit from the interface (if defined) and from the class created by the factory
-class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain)):
+class UserRepository(IUserRepository, crud_factory(UserSQLA, UserDomain, UserCreate, UserPatch)):
     """Custom repository with advanced analytical capabilities."""
     async def get_user_activity_stats(
         self,
