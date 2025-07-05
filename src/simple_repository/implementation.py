@@ -184,9 +184,9 @@ class AsyncCrud(IAsyncCrud[SA, DM, CS, PS], metaclass=FrozenClassAttributesMeta)
             )
 
             result = await session.execute(q)
-            await session.commit()
-
             updated_entity = result.scalar_one()
+            await session.commit()
+            await session.refresh(updated_entity)
             return self.domain_model.model_validate(updated_entity)
 
         except IntegrityError as e:
@@ -217,9 +217,9 @@ class AsyncCrud(IAsyncCrud[SA, DM, CS, PS], metaclass=FrozenClassAttributesMeta)
             )
 
             result = await session.execute(q)
-            await session.commit()
-
             updated_entity = result.scalar_one()
+            await session.commit()
+            await session.refresh(updated_entity)
             return self.domain_model.model_validate(updated_entity)
 
         except IntegrityError as e:
